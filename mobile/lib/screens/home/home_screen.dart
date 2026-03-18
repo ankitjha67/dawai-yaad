@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../../models/medication.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/family_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../providers/schedule_provider.dart';
+import '../../services/alarm_manager.dart';
 import '../../utils/theme.dart';
 import '../../widgets/schedule_card.dart';
 import '../../widgets/family_switcher.dart';
@@ -21,9 +23,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     // Load data after frame renders
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ScheduleProvider>().loadSchedule();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final schedule = context.read<ScheduleProvider>();
+      await schedule.loadSchedule();
       context.read<FamilyProvider>().loadFamilies();
+      // Schedule local alarms for today's medications
+      AlarmManager().scheduleForToday(schedule.schedule);
     });
   }
 
@@ -46,10 +51,17 @@ class _HomeScreenState extends State<HomeScreen> {
               tooltip: 'Switch Profile',
               onPressed: () => _showFamilySwitcher(context),
             ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: () => _logout(context),
+          // Notification bell with badge
+          Consumer<NotificationProvider>(
+            builder: (ctx, notifProvider, _) => IconButton(
+              icon: Badge(
+                isLabelVisible: notifProvider.hasUnread,
+                label: Text('${notifProvider.unreadCount}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+              tooltip: 'Notifications',
+              onPressed: () => Navigator.pushNamed(context, '/notifications'),
+            ),
           ),
         ],
       ),

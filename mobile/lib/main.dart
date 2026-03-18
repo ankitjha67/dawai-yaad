@@ -5,18 +5,23 @@ import 'package:provider/provider.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/family_provider.dart';
+import 'providers/notification_provider.dart';
 import 'providers/schedule_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/documents/documents_screen.dart';
 import 'screens/health/measurements_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/medication/add_medication_screen.dart';
+import 'screens/notifications/notifications_screen.dart';
 import 'screens/settings/settings_screen.dart';
 import 'screens/sos/sos_screen.dart';
+import 'services/alarm_manager.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/family_service.dart';
+import 'services/fcm_service.dart';
 import 'services/medication_service.dart';
+import 'services/notification_service.dart';
 import 'utils/theme.dart';
 
 void main() {
@@ -34,12 +39,14 @@ class DawaiYaadApp extends StatelessWidget {
     final authService = AuthService(apiClient);
     final medService = MedicationService(apiClient);
     final familyService = FamilyService(apiClient);
+    final notifService = NotificationService(apiClient);
 
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(authService, apiClient)),
         ChangeNotifierProvider(create: (_) => ScheduleProvider(medService)),
         ChangeNotifierProvider(create: (_) => FamilyProvider(familyService)),
+        ChangeNotifierProvider(create: (_) => NotificationProvider(notifService)),
       ],
       child: MaterialApp(
         title: 'Dawai Yaad',
@@ -52,6 +59,7 @@ class DawaiYaadApp extends StatelessWidget {
           '/login': (context) => const LoginScreen(),
           '/home': (context) => const MainShell(),
           '/add-medication': (context) => const AddMedicationScreen(),
+          '/notifications': (context) => const NotificationsScreen(),
         },
       ),
     );
@@ -78,7 +86,28 @@ class _MainShellState extends State<MainShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _initServices();
+  }
+
+  Future<void> _initServices() async {
+    // Initialize FCM for push notifications
+    await FCMService().initialize();
+
+    // Initialize alarm manager for local reminders
+    await AlarmManager().initialize();
+
+    // Load notification count
+    if (mounted) {
+      context.read<NotificationProvider>().refreshUnreadCount();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final notifProvider = context.watch<NotificationProvider>();
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -87,28 +116,36 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.medication_outlined),
-            selectedIcon: Icon(Icons.medication),
+            icon: Badge(
+              isLabelVisible: notifProvider.hasUnread,
+              label: Text('${notifProvider.unreadCount}'),
+              child: const Icon(Icons.medication_outlined),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: notifProvider.hasUnread,
+              label: Text('${notifProvider.unreadCount}'),
+              child: const Icon(Icons.medication),
+            ),
             label: 'Medicines',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.monitor_heart_outlined),
             selectedIcon: Icon(Icons.monitor_heart),
             label: 'Health',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.sos_outlined),
             selectedIcon: Icon(Icons.sos),
             label: 'SOS',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.folder_outlined),
             selectedIcon: Icon(Icons.folder),
             label: 'Documents',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: 'Settings',
@@ -130,7 +167,7 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-/// Splash screen — checks auth state and navigates.
+/// Splash screen — checks auth state, initializes services.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
