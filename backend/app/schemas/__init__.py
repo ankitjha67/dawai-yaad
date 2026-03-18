@@ -1,0 +1,1 @@
+"""Dawai Yaad — Pydantic Schemas."""
