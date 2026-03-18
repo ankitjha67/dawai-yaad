@@ -16,6 +16,7 @@ from app.schemas.medication import (
     DoseLogCreate, DoseLogOut, MedicationCreate,
     MedicationOut, MedicationUpdate, TodayScheduleItem,
 )
+from app.services.family import check_edit_access, check_view_access
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/medications", tags=["Medications"])
@@ -32,7 +33,8 @@ async def list_medications(
 ):
     """List medications. If user_id provided (caregiver), list that user's meds."""
     target_id = user_id or current_user.id
-    # TODO: Check caregiver permission if user_id != current_user.id
+    if target_id != current_user.id:
+        await check_view_access(current_user, target_id, db)
 
     query = select(Medication).where(Medication.user_id == target_id)
     if active_only:
@@ -52,7 +54,8 @@ async def create_medication(
 ):
     """Add a new medication. Caregivers can add for other users."""
     target_id = for_user_id or current_user.id
-    # TODO: Check caregiver permission
+    if target_id != current_user.id:
+        await check_edit_access(current_user, target_id, db)
 
     db_med = Medication(
         user_id=target_id,
@@ -76,7 +79,7 @@ async def get_medication(
     med = result.scalar_one_or_none()
     if not med:
         raise HTTPException(status_code=404, detail="Medication not found")
-    # TODO: Check ownership or caregiver permission
+    await check_view_access(current_user, med.user_id, db)
     return med
 
 
@@ -92,6 +95,7 @@ async def update_medication(
     med = result.scalar_one_or_none()
     if not med:
         raise HTTPException(status_code=404, detail="Medication not found")
+    await check_edit_access(current_user, med.user_id, db)
 
     for key, value in updates.model_dump(exclude_unset=True).items():
         setattr(med, key, value)
@@ -112,6 +116,7 @@ async def delete_medication(
     med = result.scalar_one_or_none()
     if not med:
         raise HTTPException(status_code=404, detail="Medication not found")
+    await check_edit_access(current_user, med.user_id, db)
 
     med.is_active = False
     return {"message": "Medication deactivated"}
@@ -127,6 +132,8 @@ async def today_schedule(
     """Get today's medication schedule with dose status."""
     check_date = target_date or date.today()
     target = user_id or current_user.id
+    if target != current_user.id:
+        await check_view_access(current_user, target, db)
 
     # Get all active meds
     result = await db.execute(
@@ -181,6 +188,7 @@ async def mark_taken(
     med = result.scalar_one_or_none()
     if not med:
         raise HTTPException(status_code=404, detail="Medication not found")
+    await check_edit_access(current_user, med.user_id, db)
 
     today = date.today()
     now = datetime.now(timezone.utc)
@@ -239,6 +247,7 @@ async def skip_dose(
     med = result.scalar_one_or_none()
     if not med:
         raise HTTPException(status_code=404, detail="Medication not found")
+    await check_edit_access(current_user, med.user_id, db)
 
     log = DoseLog(
         medication_id=med.id,
@@ -261,6 +270,12 @@ async def dose_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Get dose log history for a medication."""
+    # Check view access via the medication's owner
+    med_result = await db.execute(select(Medication).where(Medication.id == med_id))
+    med = med_result.scalar_one_or_none()
+    if med:
+        await check_view_access(current_user, med.user_id, db)
+
     from datetime import timedelta
     since = date.today() - timedelta(days=days)
     result = await db.execute(
@@ -279,6 +294,8 @@ async def low_stock(
 ):
     """Get medications with low stock needing refill."""
     target = user_id or current_user.id
+    if target != current_user.id:
+        await check_view_access(current_user, target, db)
     result = await db.execute(
         select(Medication).where(
             and_(

@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.sos import SOSAlert, SOSStatus
 from app.models.user import User
 from app.schemas.health import SOSAcknowledge, SOSOut, SOSTrigger
+from app.services.family import get_family_member_ids, get_sos_recipient_ids
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/sos", tags=["SOS Emergency"])
@@ -51,11 +52,21 @@ async def trigger_sos(
     # TODO: Send SMS to emergency contacts
     # TODO: Broadcast via WebSocket
 
-    # Notify WebSocket clients
-    family_key = str(current_user.id)  # In production, use family_id
-    if family_key in _ws_connections:
-        msg = f'{{"type":"sos","user":"{current_user.name}","alert_id":"{alert.id}","status":"triggered"}}'
-        for ws in _ws_connections[family_key]:
+    # Notify all family members who receive SOS via WebSocket
+    sos_recipients = await get_sos_recipient_ids(current_user.id, db)
+    msg = f'{{"type":"sos","user":"{current_user.name}","alert_id":"{alert.id}","status":"triggered"}}'
+    for recipient_id in sos_recipients:
+        key = str(recipient_id)
+        if key in _ws_connections:
+            for ws in _ws_connections[key]:
+                try:
+                    await ws.send_text(msg)
+                except Exception:
+                    pass
+    # Also notify via self key (backwards compat)
+    self_key = str(current_user.id)
+    if self_key in _ws_connections:
+        for ws in _ws_connections[self_key]:
             try:
                 await ws.send_text(msg)
             except Exception:
@@ -117,10 +128,16 @@ async def active_alerts(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all active (unresolved) SOS alerts visible to current user."""
-    # TODO: Filter by family/hospital membership
+    # Filter to alerts from family members (or self)
+    visible_ids = await get_family_member_ids(current_user.id, db)
     result = await db.execute(
         select(SOSAlert)
-        .where(SOSAlert.status != SOSStatus.resolved)
+        .where(
+            and_(
+                SOSAlert.status != SOSStatus.resolved,
+                SOSAlert.user_id.in_(visible_ids),
+            )
+        )
         .order_by(SOSAlert.triggered_at.desc())
     )
     return result.scalars().all()

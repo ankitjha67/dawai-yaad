@@ -1,17 +1,53 @@
-"""Test configuration — async fixtures for FastAPI + PostgreSQL testing."""
+"""Test configuration — async fixtures for FastAPI + SQLite testing."""
 
 import asyncio
+import json
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import Text, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.types import TypeDecorator
 
 from app.database import Base, get_db
 from app.main import app
 
-# Use SQLite for tests (fast, no external dependency)
+
+# ── SQLite-compatible ARRAY shim ─────────────────────────────
+# PostgreSQL ARRAY columns are stored as JSON text in SQLite tests.
+
+class JSONArray(TypeDecorator):
+    """Stores a Python list as JSON text. Used to replace ARRAY in SQLite."""
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value)
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return None
+
+
+def _patch_array_columns():
+    """Replace PostgreSQL ARRAY columns with JSONArray for SQLite compat."""
+    from sqlalchemy.dialects.postgresql import ARRAY
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, ARRAY):
+                column.type = JSONArray()
+
+
+_patch_array_columns()
+
+
+# ── Test database setup ──────────────────────────────────────
+
 TEST_DB_URL = "sqlite+aiosqlite:///./test.db"
 
 engine_test = create_async_engine(TEST_DB_URL, echo=False)

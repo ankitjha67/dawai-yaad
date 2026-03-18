@@ -16,6 +16,7 @@ from app.schemas.health import (
     MoodCreate, MoodOut,
     SymptomCreate, SymptomOut,
 )
+from app.services.family import check_edit_access, check_view_access
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/health", tags=["Health Tracking"])
@@ -30,6 +31,8 @@ async def create_measurement(
     db: AsyncSession = Depends(get_db),
 ):
     target = for_user_id or current_user.id
+    if target != current_user.id:
+        await check_edit_access(current_user, target, db)
     entry = Measurement(
         user_id=target,
         recorded_by=current_user.id,
@@ -54,6 +57,8 @@ async def list_measurements(
     db: AsyncSession = Depends(get_db),
 ):
     target = user_id or current_user.id
+    if target != current_user.id:
+        await check_view_access(current_user, target, db)
     since = date.today() - timedelta(days=days)
     query = select(Measurement).where(
         and_(Measurement.user_id == target, Measurement.created_at >= since.isoformat())
@@ -87,6 +92,8 @@ async def list_moods(
     db: AsyncSession = Depends(get_db),
 ):
     target = user_id or current_user.id
+    if target != current_user.id:
+        await check_view_access(current_user, target, db)
     since = date.today() - timedelta(days=days)
     result = await db.execute(
         select(MoodLog)
@@ -119,6 +126,8 @@ async def list_symptoms(
     db: AsyncSession = Depends(get_db),
 ):
     target = user_id or current_user.id
+    if target != current_user.id:
+        await check_view_access(current_user, target, db)
     since = date.today() - timedelta(days=days)
     result = await db.execute(
         select(SymptomLog)
