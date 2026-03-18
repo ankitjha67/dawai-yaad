@@ -7,7 +7,12 @@ import 'providers/auth_provider.dart';
 import 'providers/family_provider.dart';
 import 'providers/schedule_provider.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/documents/documents_screen.dart';
+import 'screens/health/measurements_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/medication/add_medication_screen.dart';
+import 'screens/settings/settings_screen.dart';
+import 'screens/sos/sos_screen.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/family_service.dart';
@@ -45,9 +50,82 @@ class DawaiYaadApp extends StatelessWidget {
         home: const SplashScreen(),
         routes: {
           '/login': (context) => const LoginScreen(),
-          '/home': (context) => const HomeScreen(),
+          '/home': (context) => const MainShell(),
+          '/add-medication': (context) => const AddMedicationScreen(),
         },
       ),
+    );
+  }
+}
+
+/// Main shell with bottom navigation — wraps all primary screens.
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  int _currentIndex = 0;
+
+  final _screens = const [
+    HomeScreen(),
+    MeasurementsScreen(),
+    SOSScreen(),
+    DocumentsScreen(),
+    SettingsScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (i) => setState(() => _currentIndex = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.medication_outlined),
+            selectedIcon: Icon(Icons.medication),
+            label: 'Medicines',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.monitor_heart_outlined),
+            selectedIcon: Icon(Icons.monitor_heart),
+            label: 'Health',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.sos_outlined),
+            selectedIcon: Icon(Icons.sos),
+            label: 'SOS',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.folder_outlined),
+            selectedIcon: Icon(Icons.folder),
+            label: 'Documents',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton(
+              onPressed: () async {
+                final result = await Navigator.pushNamed(context, '/add-medication');
+                if (result == true && mounted) {
+                  context.read<ScheduleProvider>().loadSchedule();
+                }
+              },
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }
