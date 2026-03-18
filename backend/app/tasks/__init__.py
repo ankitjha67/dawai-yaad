@@ -42,37 +42,11 @@ celery_app.conf.beat_schedule = {
     },
 }
 
-
-@celery_app.task(name="app.tasks.reminders.generate_daily_reminders")
-def generate_daily_reminders():
-    """Generate individual reminder tasks for all users' medications today."""
-    # TODO: Query all active medications, check schedule, create individual tasks
-    pass
-
-
-@celery_app.task(name="app.tasks.reminders.check_missed_doses")
-def check_missed_doses():
-    """Check for doses past their time that haven't been logged. Trigger escalation."""
-    # TODO: Query medications due in last hour without dose_log, send alerts
-    pass
-
-
-@celery_app.task(name="app.tasks.reminders.send_stock_alerts")
-def send_stock_alerts():
-    """Send push notifications for low-stock medications."""
-    # TODO: Query medications where stock <= threshold, push to user + caregivers
-    pass
-
-
-@celery_app.task(name="app.tasks.reminders.send_reminder")
-def send_reminder(user_id: str, medication_id: str, escalation_level: int = 0):
-    """Send a single medication reminder. Escalates if not acknowledged."""
-    # TODO: Send FCM push, schedule next escalation if no response
-    pass
-
-
-@celery_app.task(name="app.tasks.reminders.send_fcm_push")
-def send_fcm_push(fcm_token: str, title: str, body: str, data: dict = None):
-    """Send Firebase Cloud Messaging push notification."""
-    # TODO: Use firebase_admin SDK to send push
-    pass
+# ── Import tasks so Celery discovers them ────────────────────
+# Must be after celery_app is defined (tasks reference it via decorator)
+from app.tasks.reminders import (  # noqa: E402, F401
+    generate_daily_reminders,
+    check_missed_doses,
+    send_stock_alerts,
+    send_reminder,
+)
